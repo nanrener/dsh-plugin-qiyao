@@ -1,7 +1,7 @@
 {
   "name": "qiyao-calendar",
   "version": "1.4.3",
-  "description": "七曜日程助手：顶部栏按钮 + /qiyao 命令，返回当日曜日基调与适配事项",
+  "description": "每天看一眼今天是什么日子：日、月、火、水、木、金、土，顺手给点安排灵感，不算吉凶。",
   "type": "module",
   "main": "index.js",
   "exports": {
