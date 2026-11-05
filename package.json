@@ -1,0 +1,37 @@
+{
+  "name": "qiyao-calendar",
+  "version": "1.4.3",
+  "description": "七曜日程助手：顶部栏按钮 + /qiyao 命令，返回当日曜日基调与适配事项",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "data",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": ["dsh-plugin", "qiyao", "calendar", "deepseek-harness"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nanrener/dsh-plugin-qiyao.git"
+  },
+  "author": "nanrener",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+    }
+  }
+}

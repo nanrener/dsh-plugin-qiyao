@@ -1,0 +1,223 @@
+window.__ModuleLoader__.load({
+  id: 'qiyao-calendar',
+  factory(require) {
+    const React = require('react')
+    const h = React.createElement
+    const DATA = /*__DATA__*/ null
+
+    const WEEK = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn']
+    const POPOVER_ID = 'qiyao-calendar-popover'
+
+    const chipStyle = {
+      display: 'inline-block',
+      padding: '1px 8px',
+      borderRadius: '999px',
+      background: 'transparent',
+      fontSize: '12px',
+      lineHeight: '18px',
+      whiteSpace: 'nowrap'
+    }
+
+    function todayInfo() {
+      const now = new Date()
+      const y = now.getFullYear()
+      const m = now.getMonth() + 1
+      const d = now.getDate()
+      const dayNumber = Math.floor(Date.UTC(y, m - 1, d) / 86400000)
+      const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+      const key = WEEK[weekday]
+      const planet = DATA[key]
+      const pick = planet.picks[dayNumber % planet.picks.length]
+      const start = dayNumber % planet.fit.length
+      const fit = []
+      for (let i = 0; i < 6; i += 1) fit.push(planet.fit[(start + i) % planet.fit.length])
+      return { m, d, planet, pick, fit }
+    }
+
+    function QiyaoAction() {
+      const panelRef = React.useRef(null)
+      const info = todayInfo()
+      const planet = info.planet
+
+      function toggle() {
+        const panel = panelRef.current
+        if (!panel) return
+        if (typeof panel.showPopover === 'function') {
+          if (panel.matches(':popover-open')) panel.hidePopover()
+          else panel.showPopover()
+          return
+        }
+        panel.style.display = panel.style.display === 'block' ? 'none' : 'block'
+      }
+
+      const chips = info.fit.map((item) =>
+        h(
+          'span',
+          {
+            key: item,
+            style: Object.assign({}, chipStyle, {
+              border: '1px solid color-mix(in srgb, ' + planet.accent + ' 24%, transparent)'
+            })
+          },
+          item
+        )
+      )
+
+      return h(
+        React.Fragment,
+        null,
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: toggle,
+            title: '七曜日程参考',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              height: '32px',
+              padding: '0 10px',
+              borderRadius: '16px',
+              border: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.12))',
+              background: 'transparent',
+              color: 'inherit',
+              font: 'inherit',
+              fontSize: '13px',
+              cursor: 'pointer'
+            }
+          },
+          h('span', { style: { fontSize: '14px', color: planet.accent } }, planet.glyph),
+          h('span', null, planet.name)
+        ),
+        h(
+          'div',
+          {
+            ref: panelRef,
+            id: POPOVER_ID,
+            popover: 'auto',
+            style: {
+              position: 'fixed',
+              top: '52px',
+              right: '20px',
+              left: 'auto',
+              bottom: 'auto',
+              margin: 0,
+              width: '360px',
+              maxWidth: 'calc(100vw - 40px)',
+              padding: '16px 18px',
+              borderRadius: '14px',
+              border: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.12))',
+              background: 'var(--dsw-alias-bg-elevated, #ffffff)',
+              boxShadow: '0 12px 36px rgba(0,0,0,0.18)',
+              color: 'var(--dsw-alias-label-primary, inherit)',
+              fontSize: '13px',
+              lineHeight: '1.7'
+            }
+          },
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' } },
+            h(
+              'div',
+              { style: { fontWeight: 600, fontSize: '15px' } },
+              planet.name,
+              h(
+                'span',
+                { style: { fontWeight: 500, fontSize: '13px', opacity: 0.75 } },
+                '（',
+                h('span', { style: { color: planet.accent } }, planet.glyph),
+                ' ' + planet.planet + '）'
+              )
+            ),
+            h(
+              'div',
+              {
+                style: {
+                  fontSize: '12px',
+                  opacity: 0.42,
+                  fontVariantNumeric: 'tabular-nums',
+                  whiteSpace: 'nowrap'
+                }
+              },
+              info.m + ' 月 ' + info.d + ' 日'
+            )
+          ),
+          h(
+            'div',
+            { style: { marginTop: '4px', fontSize: '12px', opacity: 0.66, letterSpacing: '0.02em' } },
+            h('span', { style: { color: planet.accent } }, '✦'),
+            ' ' + planet.theme
+          ),
+
+          h(
+            'div',
+            {
+              style: {
+                marginTop: '12px',
+                padding: '9px 12px',
+                borderRadius: '10px',
+                borderLeft: '3px solid ' + planet.accent,
+                background: 'color-mix(in srgb, ' + planet.accent + ' 7%, transparent)'
+              }
+            },
+            h(
+              'div',
+              { style: { fontSize: '11px', opacity: 0.5, marginBottom: '2px', letterSpacing: '0.04em' } },
+              '今日首推'
+            ),
+            h('div', { style: { fontSize: '14px', fontWeight: 600, lineHeight: '1.5' } }, info.pick)
+          ),
+
+          h(
+            'div',
+            { style: { marginTop: '12px', fontSize: '11px', opacity: 0.5, marginBottom: '6px' } },
+            '也适合'
+          ),
+          h(
+            'div',
+            {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, max-content)',
+                gap: '7px 6px',
+                alignItems: 'center'
+              }
+            },
+            chips
+          ),
+
+          h(
+            'div',
+            {
+              style: {
+                marginTop: '12px',
+                paddingTop: '8px',
+                borderTop: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.07))',
+                fontSize: '11px',
+                opacity: 0.45
+              }
+            },
+            '＋ 自定义事项：/qiyao help'
+          )
+        )
+      )
+    }
+
+    return {
+      inject: ['slots'],
+      apply(ctx) {
+        ctx.slots.inject('conversation.session.header.actions', () =>
+          ctx.slots.register(
+            {
+              name: 'conversation.session.header.actions',
+              id: 'qiyao-calendar',
+              order: 15
+            },
+            QiyaoAction
+          )
+        )
+      }
+    }
+  }
+})
