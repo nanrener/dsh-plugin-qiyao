@@ -5,8 +5,12 @@ window.__ModuleLoader__.load({
     const h = React.createElement
     const DATA = /*__DATA__*/ null
 
-    const WEEK = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn']
+    // 日期与事项解析只有一份实现：shared/items.mjs，构建时原样内联成 QIYAO
+    /*__SHARED__*/
+
     const POPOVER_ID = 'qiyao-calendar-popover'
+    const ITEMS_PATH = /*__ITEMS_PATH__*/ ''
+    let PLUGIN_CTX = null
 
     const chipStyle = {
       display: 'inline-block',
@@ -18,26 +22,104 @@ window.__ModuleLoader__.load({
       whiteSpace: 'nowrap'
     }
 
-    function todayInfo() {
-      const now = new Date()
-      const y = now.getFullYear()
-      const m = now.getMonth() + 1
-      const d = now.getDate()
-      const dayNumber = Math.floor(Date.UTC(y, m - 1, d) / 86400000)
-      const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-      const key = WEEK[weekday]
-      const planet = DATA[key]
-      const pick = planet.picks[dayNumber % planet.picks.length]
-      const start = dayNumber % planet.fit.length
-      const fit = []
-      for (let i = 0; i < 6; i += 1) fit.push(planet.fit[(start + i) % planet.fit.length])
-      return { m, d, planet, pick, fit }
+    function todayInfo(now) {
+      const at = now || new Date()
+      const y = at.getFullYear()
+      const m = at.getMonth() + 1
+      const d = at.getDate()
+      const day = QIYAO.dayNumber(y, m, d)
+      const planet = DATA[QIYAO.weekdayKey(y, m, d)]
+      return {
+        y: y,
+        m: m,
+        d: d,
+        planet: planet,
+        pick: QIYAO.pickFor(planet, day),
+        fit: QIYAO.fitFor(planet, day)
+      }
     }
 
-    function QiyaoAction() {
+    /** 事项文件原文 → 今天要做的那几条（截断数和“还有几条”都交给共享实现） */
+    function parseItems(text, info) {
+      return QIYAO.readItems(text, QIYAO.weekdayKey(info.y, info.m, info.d), info.y, info.m, info.d)
+    }
+
+    function QiyaoAction(props) {
       const panelRef = React.useRef(null)
       const info = todayInfo()
       const planet = info.planet
+      const sessionId = props && props.sessionId
+      const [items, setItems] = React.useState(null)
+      const [adding, setAdding] = React.useState(false)
+      const [draft, setDraft] = React.useState('')
+      const [message, setMessage] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const [readError, setReadError] = React.useState('')
+
+      function unwrap(res) {
+        if (!res) return null
+        if (res.ok === false) {
+          const err = res.error || {}
+          throw new Error(err.message || err.code || '读取失败')
+        }
+        if (res.text === undefined && res.value !== undefined) return res.value
+        return res
+      }
+
+      function readItems() {
+        const wf = PLUGIN_CTX && PLUGIN_CTX.remote && PLUGIN_CTX.remote.workspaceFiles
+        if (!wf || !ITEMS_PATH) {
+          setReadError('浮层拿不到文件通道')
+          return Promise.resolve()
+        }
+        if (!sessionId) {
+          setReadError('浮层拿不到会话标识：' + (props ? Object.keys(props).join(',') : 'no props'))
+          return Promise.resolve()
+        }
+        return Promise.resolve(wf.read(sessionId, ITEMS_PATH, {}))
+          .then((res) => {
+            const data = unwrap(res)
+            setReadError('')
+            if (data) setItems(parseItems(data.text, info))
+          })
+          .catch((error) => {
+            setReadError('读不到事项：' + (error && error.message ? error.message : String(error)))
+          })
+      }
+
+      React.useEffect(() => {
+        let alive = true
+        readItems().catch(() => {
+          if (alive) setItems(null)
+        })
+        return () => {
+          alive = false
+        }
+      }, [sessionId])
+
+      function submitItem() {
+        const text = draft.trim()
+        if (!text || busy) return
+        const remote = PLUGIN_CTX && PLUGIN_CTX.remote
+        if (!remote || !remote.commands || !sessionId) {
+          setMessage('这个界面读不到宿主的命令通道')
+          return
+        }
+        setBusy(true)
+        Promise.resolve(remote.commands.execute(sessionId, '/qiyao add ' + text, []))
+          .then((res) => {
+            const data = unwrap(res)
+            const out = (data && data.text) || (typeof data === 'string' ? data : '')
+            setMessage(out ? String(out).split('\n')[0] : '已加上')
+            setDraft('')
+            setAdding(false)
+            return readItems()
+          })
+          .catch((error) => {
+            setMessage('没加上：' + (error && error.message ? error.message : String(error)))
+          })
+          .then(() => setBusy(false))
+      }
 
       function toggle() {
         const panel = panelRef.current
@@ -187,6 +269,48 @@ window.__ModuleLoader__.load({
             chips
           ),
 
+          items && items.today.length
+            ? h(
+                'div',
+                {
+                  style: {
+                    marginTop: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.07))'
+                  }
+                },
+                items.today.length
+                  ? h(
+                      'div',
+                      null,
+                      h(
+                        'div',
+                        { style: { fontSize: '11px', opacity: 0.5, marginBottom: '4px' } },
+                        '今天要做'
+                      ),
+                      items.today.map((item, index) =>
+                        h(
+                          'div',
+                          { key: index, style: { fontSize: '13px', lineHeight: '1.65' } },
+                          h(
+                            'span',
+                            { style: { color: planet.accent, marginRight: '6px' } },
+                            '·'
+                          ),
+                          item
+                        )
+                      ),
+                      items.todayTotal > items.today.length
+                        ? h(
+                            'div',
+                            { style: { fontSize: '11px', opacity: 0.45, marginTop: '2px' } },
+                            '还有 ' + (items.todayTotal - items.today.length) + ' 条，在 /qiyao 里'
+                          )
+                        : null
+                    )
+                  : null
+              )
+            : null,
           h(
             'div',
             {
@@ -194,19 +318,122 @@ window.__ModuleLoader__.load({
                 marginTop: '12px',
                 paddingTop: '8px',
                 borderTop: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.07))',
-                fontSize: '11px',
-                opacity: 0.45
+                fontSize: '11px'
               }
             },
-            '＋ 自定义事项：/qiyao help'
+            readError
+              ? h(
+                  'div',
+                  { style: { opacity: 0.5, lineHeight: '1.6', marginBottom: '4px', wordBreak: 'break-all' } },
+                  readError
+                )
+              : null,
+            message ? h('div', { style: { opacity: 0.6, lineHeight: '1.6', marginBottom: '4px' } }, message) : null,
+            adding
+              ? h(
+                  'div',
+                  { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+                  h('input', {
+                    value: draft,
+                    autoFocus: true,
+                    placeholder: '明天 发作品',
+                    onChange: (e) => setDraft(e.target.value),
+                    onKeyDown: (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        submitItem()
+                      }
+                      if (e.key === 'Escape') {
+                        setAdding(false)
+                        setDraft('')
+                      }
+                    },
+                    style: {
+                      flex: '1 1 auto',
+                      minWidth: 0,
+                      height: '26px',
+                      padding: '0 8px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--dsw-alias-border-weak, rgba(0,0,0,0.16))',
+                      background: 'transparent',
+                      color: 'inherit',
+                      font: 'inherit',
+                      fontSize: '12px'
+                    }
+                  }),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: submitItem,
+                      disabled: busy,
+                      style: {
+                        height: '26px',
+                        padding: '0 10px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: 'color-mix(in srgb, ' + planet.accent + ' 16%, transparent)',
+                        color: 'inherit',
+                        font: 'inherit',
+                        fontSize: '12px',
+                        cursor: busy ? 'default' : 'pointer'
+                      }
+                    },
+                    busy ? '加…' : '加'
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: () => {
+                        setAdding(false)
+                        setDraft('')
+                      },
+                      style: {
+                        height: '26px',
+                        width: '22px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'inherit',
+                        opacity: 0.5,
+                        font: 'inherit',
+                        fontSize: '14px',
+                        cursor: 'pointer'
+                      }
+                    },
+                    '×'
+                  )
+                )
+              : h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => {
+                      setAdding(true)
+                      setMessage('')
+                    },
+                    style: {
+                      all: 'unset',
+                      display: 'block',
+                      width: '100%',
+                      opacity: 0.45,
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }
+                  },
+                  items && items.today.length
+                    ? '＋ 再加一件事'
+                    : '＋ 加一件事'
+                )
           )
         )
       )
     }
 
     return {
-      inject: ['slots'],
+      inject: ['slots', 'remote', 'remote.workspaceFiles', 'remote.commands'],
       apply(ctx) {
+        PLUGIN_CTX = ctx
         ctx.slots.inject('conversation.session.header.actions', () =>
           ctx.slots.register(
             {

@@ -1,95 +1,133 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { planets, weekOrder } from './data/qiyao.js'
+import { planets } from './data/qiyao.js'
+import {
+  FIT_SHOWN,
+  MAX_LATER_DAYS,
+  PREFIX_ALIASES,
+  WEEKDAY_LABEL,
+  dateLabel,
+  dayNumber,
+  fitFor,
+  isoDate,
+  parseDatePrefix,
+  pickFor,
+  readItems,
+  weekdayKey
+} from './shared/items.mjs'
 
 export const name = 'qiyao-calendar'
 export const inject = ['commands']
 
-/** 自定义事项文件：存在就读，不存在就整行不显示 */
-const ITEMS_FILE = path.join(os.homedir(), 'Documents', '七曜事项.txt')
-const FIT_SHOWN = 6
-const TODAY_SHOWN = 4
-const LATER_SHOWN = 2
-const MAX_LATER_DAYS = 3
-
-/** 周一…周日 的日常叫法，配上曜日名，两个都给 */
-const WEEKDAY_LABEL = {
-  moon: { week: '周一', yao: '月曜日' },
-  mars: { week: '周二', yao: '火曜日' },
-  mercury: { week: '周三', yao: '水曜日' },
-  jupiter: { week: '周四', yao: '木曜日' },
-  venus: { week: '周五', yao: '金曜日' },
-  saturn: { week: '周六', yao: '土曜日' },
-  sun: { week: '周日', yao: '日曜日' }
-}
-
-/** 显示顺序：周一到周日 */
-const WEEKDAY_ORDER = ['moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn', 'sun']
-
-/** 前缀写法 → 曜日 key。周一…周日、星期X、土/土曜/土曜日 都认 */
-const PREFIX_ALIASES = {
-  周一: 'moon',
-  星期一: 'moon',
-  周二: 'mars',
-  星期二: 'mars',
-  周三: 'mercury',
-  星期三: 'mercury',
-  周四: 'jupiter',
-  星期四: 'jupiter',
-  周五: 'venus',
-  星期五: 'venus',
-  周六: 'saturn',
-  星期六: 'saturn',
-  周日: 'sun',
-  周天: 'sun',
-  星期日: 'sun',
-  星期天: 'sun',
-  日: 'sun',
-  日曜: 'sun',
-  日曜日: 'sun',
-  月: 'moon',
-  月曜: 'moon',
-  月曜日: 'moon',
-  火: 'mars',
-  火曜: 'mars',
-  火曜日: 'mars',
-  水: 'mercury',
-  水曜: 'mercury',
-  水曜日: 'mercury',
-  木: 'jupiter',
-  木曜: 'jupiter',
-  木曜日: 'jupiter',
-  金: 'venus',
-  金曜: 'venus',
-  金曜日: 'venus',
-  土: 'saturn',
-  土曜: 'saturn',
-  土曜日: 'saturn'
-}
+/** 自定义事项文件：存在就读，不存在就整行不显示（QIYAO_ITEMS 仅供测试覆盖） */
+const ITEMS_FILE = process.env.QIYAO_ITEMS || path.join(os.homedir(), 'Documents', '七曜事项.txt')
 
 const HELP = [
   '📖 七曜日程助手',
   '',
   '/qiyao              看今天',
   '/qiyao 2026-11-10   看指定日期',
+  '/qiyao add 明天 发作品   直接加一条',
   '',
   '自定义事项：在「文档」文件夹里建一个 七曜事项.txt，一行一条。',
   '  交周报            每天显示',
-  '  周六|归档发票      只在周六显示（土曜日，两种写法都认）'
+  '  周六|归档发票      只在周六显示（土曜日，两种写法都认）',
+  '  2026-11-20|交材料  只在那一天显示，过了自动消失',
+  '  11-20|交材料       省略年份，按今年算（已过去超过半年则算明年）',
+  '',
+  '加事项也可以直接说：add 明天 发作品 / add 每周五 复盘 / add 12月3日 交报告'
 ].join('\n')
 
-function dayNumber(y, m, d) {
-  return Math.floor(Date.UTC(y, m - 1, d) / 86400000)
+const WEEKDAY_WORD = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 0, 天: 0 }
+const WEEK_TEXT = ['日', '一', '二', '三', '四', '五', '六']
+
+/** 把「明天 发作品」这类口语 + 机器写法统一成文件里的一行 */
+function composeItemLine(input, now = new Date()) {
+  const raw = String(input ?? '').trim()
+  if (!raw) return { error: '要加什么？例如：add 明天 发作品' }
+
+  const today = { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() }
+
+  // 已经是机器写法
+  const explicit = /^([^|｜:：]{1,12})\s*[|｜:：]\s*(.+)$/.exec(raw)
+  if (explicit) {
+    const prefix = explicit[1].trim().replace(/^每/, '')
+    const text = explicit[2].trim()
+    if (text && (PREFIX_ALIASES[prefix] || parseDatePrefix(prefix, today))) {
+      return { line: `${prefix}|${text}` }
+    }
+  }
+
+  const at = (offset) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset)
+
+  let matched = /^(今天|今日|明天|明日|后天|大后天)\s*(.+)$/.exec(raw)
+  if (matched) {
+    const offset = { 今天: 0, 今日: 0, 明天: 1, 明日: 1, 后天: 2, 大后天: 3 }[matched[1]]
+    const d = at(offset)
+    return {
+      line: `${isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate())}|${matched[2].trim()}`,
+      note: dateLabel(d.getMonth() + 1, d.getDate())
+    }
+  }
+
+  matched = /^(每|下)?(?:周|星期|礼拜)([一二三四五六日天])\s*(.+)$/.exec(raw)
+  if (matched) {
+    const weekday = WEEKDAY_WORD[matched[2]]
+    if (matched[1] === '下') {
+      const base = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const delta = ((weekday - base.getDay() + 7) % 7) + 7
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + delta)
+      return {
+        line: `${isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate())}|${matched[3].trim()}`,
+        note: dateLabel(d.getMonth() + 1, d.getDate())
+      }
+    }
+    return { line: `周${WEEK_TEXT[weekday]}|${matched[3].trim()}`, note: `每${WEEK_TEXT[weekday] === '日' ? '周日' : '周' + WEEK_TEXT[weekday]}` }
+  }
+
+  matched = /^(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?\s*(.+)$/.exec(raw)
+  if (matched) {
+    const date = parseDatePrefix(`${matched[1]}-${matched[2]}`, today)
+    if (!date) return { error: `日期不对：${matched[1]}月${matched[2]}日` }
+    return {
+      line: `${isoDate(date.y, date.m, date.d)}|${matched[3].trim()}`,
+      note: dateLabel(date.m, date.d)
+    }
+  }
+
+  return { line: raw, note: '每天' }
+}
+
+/** 比较时忽略分隔符的全角/半角差异，也忽略首尾空格 */
+function normalizeLine(line) {
+  return String(line).replace(/[｜：]/g, (c) => (c === '｜' ? '|' : ':')).trim()
+}
+
+/** 追加一行到事项文件；已经存在就返回 duplicate，不写第二遍 */
+function appendItem(line) {
+  let existing = ''
+  try {
+    existing = fs.readFileSync(ITEMS_FILE, 'utf8')
+  } catch {
+    existing = ''
+  }
+
+  const target = normalizeLine(line)
+  for (const raw of existing.split(/\r?\n/)) {
+    if (raw.trim() && normalizeLine(raw) === target) return { duplicate: true }
+  }
+
+  const prefix = existing && !existing.endsWith('\n') ? '\n' : ''
+  fs.mkdirSync(path.dirname(ITEMS_FILE), { recursive: true })
+  fs.appendFileSync(ITEMS_FILE, `${prefix}${line}\n`, 'utf8')
+  return { duplicate: false }
 }
 
 /** 解析 YYYY-MM-DD / YYYY/MM/DD / YYYY年M月D日；空输入取今天 */
-function resolveDate(raw) {
+function resolveDate(raw, now = new Date()) {
   const s = String(raw ?? '').trim()
-  if (!s) {
-    const now = new Date()
-    return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() }
-  }
+  if (!s) return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() }
   const matched = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/.exec(s)
   if (!matched) return null
   const y = Number(matched[1])
@@ -102,79 +140,39 @@ function resolveDate(raw) {
   return { y, m, d }
 }
 
-/** 一行 → { text, key }；key 为 null 表示每天显示 */
-function parseItemLine(line) {
-  const s = line.trim()
-  if (!s || s.startsWith('#')) return null
-  const matched = /^([^|｜:：]{1,6})\s*[|｜:：]\s*(.+)$/.exec(s)
-  if (matched) {
-    const key = PREFIX_ALIASES[matched[1].trim()]
-    if (key) {
-      const text = matched[2].trim()
-      return text ? { text, key } : null
-    }
-  }
-  return { text: s, key: null }
-}
-
-/** 读事项，分成「今天」和「留给某天」两类 */
-function readItems(todayKey) {
-  let raw
+function readItemsFile() {
   try {
-    raw = fs.readFileSync(ITEMS_FILE, 'utf8')
+    return fs.readFileSync(ITEMS_FILE, 'utf8')
   } catch {
-    return { today: [], later: new Map() }
+    return ''
   }
-
-  const today = []
-  const later = new Map()
-  for (const line of raw.split(/\r?\n/)) {
-    const item = parseItemLine(line)
-    if (!item) continue
-    if (item.key === null || item.key === todayKey) {
-      if (today.length < TODAY_SHOWN) today.push(item.text)
-    } else {
-      const list = later.get(item.key) ?? []
-      if (list.length < LATER_SHOWN) {
-        list.push(item.text)
-        later.set(item.key, list)
-      }
-    }
-  }
-  return { today, later }
 }
 
 function render({ y, m, d }) {
   const day = dayNumber(y, m, d)
-  const weekdayKey = weekOrder[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
-  const planet = planets[weekdayKey]
-
-  const pick = planet.picks[day % planet.picks.length]
-
-  const fit = []
-  const start = day % planet.fit.length
-  for (let i = 0; i < FIT_SHOWN; i += 1) {
-    fit.push(planet.fit[(start + i) % planet.fit.length])
-  }
+  const planet = planets[weekdayKey(y, m, d)]
 
   const lines = [
     `📅 ${planet.name}（${planet.glyph} ${planet.planet}）· ${m} 月 ${d} 日`,
     `✨ ${planet.planet}：${planet.theme}`,
-    `✅ 今日首推：${pick}`,
-    `📋 也适合：${fit.join('、')}`
+    `✅ 今日首推：${pickFor(planet, day)}`,
+    `📋 也适合：${fitFor(planet, day, FIT_SHOWN).join('、')}`
   ]
 
-  const { today, later } = readItems(weekdayKey)
-  if (today.length > 0) lines.push(`📝 今天：${today.join('、')}`)
+  const { today, todayTotal, groups } = readItems(readItemsFile(), weekdayKey(y, m, d), y, m, d)
 
-  let shown = 0
-  for (const key of WEEKDAY_ORDER) {
-    if (shown >= MAX_LATER_DAYS) break
-    const list = later.get(key)
-    if (!list || list.length === 0) continue
-    const label = WEEKDAY_LABEL[key]
-    lines.push(`📌 留给${label.week}（${label.yao}）：${list.join('、')}`)
-    shown += 1
+  if (today.length > 0) {
+    const rest = todayTotal - today.length
+    lines.push(`📝 今天：${today.join('、')}${rest > 0 ? `（还有 ${rest} 条）` : ''}`)
+  }
+
+  for (const group of groups.slice(0, MAX_LATER_DAYS)) {
+    const rest = group.total - group.items.length
+    lines.push(`📌 留给${group.label}：${group.items.join('、')}${rest > 0 ? `（还有 ${rest} 条）` : ''}`)
+  }
+
+  if (groups.length > MAX_LATER_DAYS) {
+    lines.push(`（另有 ${groups.length - MAX_LATER_DAYS} 组稍后的安排）`)
   }
 
   return lines.join('\n')
@@ -192,6 +190,30 @@ export function apply(ctx) {
           if (/^(help|帮助|-h|--help)$/i.test(raw)) {
             return { kind: 'success', text: HELP }
           }
+
+          const adding = /^(?:add|加|新增)\s+([\s\S]+)$/i.exec(raw)
+          if (adding) {
+            const composed = composeItemLine(adding[1])
+            if (composed.error) return { kind: 'error', text: composed.error }
+
+            let result
+            try {
+              result = appendItem(composed.line)
+            } catch (error) {
+              return { kind: 'error', text: `写入失败：${error instanceof Error ? error.message : String(error)}` }
+            }
+
+            if (result.duplicate) {
+              return { kind: 'success', text: `这条已经有了，没重复写：${composed.line.replace('|', ' · ')}` }
+            }
+
+            const note = composed.note ? `（${composed.note}）` : ''
+            return {
+              kind: 'success',
+              text: `已加到七曜日程${note}：${composed.line.replace('|', ' · ')}\n写在 ${ITEMS_FILE}`
+            }
+          }
+
           const target = resolveDate(raw)
           if (!target) {
             return {

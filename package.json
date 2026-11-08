@@ -1,6 +1,6 @@
 {
   "name": "qiyao-calendar",
-  "version": "1.4.3",
+  "version": "1.8.0",
   "description": "每天看一眼今天是什么日子：日、月、火、水、木、金、土，顺手给点安排灵感，不算吉凶。",
   "type": "module",
   "main": "index.js",
@@ -13,11 +13,23 @@
     "client.js",
     "cordis.patch.yml",
     "data",
+    "shared",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
   ],
-  "keywords": ["dsh-plugin", "qiyao", "calendar", "deepseek-harness"],
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/test-items.mjs",
+    "verify": "npm run build && npm run check && npm run test"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "qiyao",
+    "calendar",
+    "deepseek-harness"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nanrener/dsh-plugin-qiyao.git"
@@ -31,7 +43,9 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   }
 }
