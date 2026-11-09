@@ -95,6 +95,18 @@ ok('add 每周五 写成周前缀', () => {
   assert.match(fs.readFileSync(tmp, 'utf8'), /周五\|复盘/)
 })
 
+ok('add 不带日期默认算今天，不会天天出现', () => {
+  handler({ rawInput: 'add 大扫除' })
+  const text = fs.readFileSync(tmp, 'utf8')
+  assert.match(text, /^\d{4}-\d{2}-\d{2}\|大扫除$/m)
+  assert.ok(!text.split(/\r?\n/).includes('大扫除'))
+})
+
+ok('add 每天 才写成天天出现', () => {
+  handler({ rawInput: 'add 每天 喝水' })
+  assert.ok(fs.readFileSync(tmp, 'utf8').split(/\r?\n/).includes('喝水'))
+})
+
 ok('看今天时把超出 4 条的部分写出来', () => {
   fs.writeFileSync(tmp, ['1', '2', '3', '4', '5'].join('\n'), 'utf8')
   const res = handler({ rawInput: '' })
