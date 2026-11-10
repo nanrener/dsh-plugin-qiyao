@@ -9,7 +9,6 @@ window.__ModuleLoader__.load({
     /*__SHARED__*/
 
     const POPOVER_ID = 'qiyao-calendar-popover'
-    const ITEMS_PATH = /*__ITEMS_PATH__*/ ''
     let PLUGIN_CTX = null
 
     const chipStyle = {
@@ -39,11 +38,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** 事项文件原文 → 今天要做的那几条（截断数和“还有几条”都交给共享实现） */
-    function parseItems(text, info) {
-      return QIYAO.readItems(text, QIYAO.weekdayKey(info.y, info.m, info.d), info.y, info.m, info.d)
-    }
-
     function QiyaoAction(props) {
       const panelRef = React.useRef(null)
       const info = todayInfo()
@@ -66,21 +60,24 @@ window.__ModuleLoader__.load({
         return res
       }
 
-      function readItems() {
-        const wf = PLUGIN_CTX && PLUGIN_CTX.remote && PLUGIN_CTX.remote.workspaceFiles
-        if (!wf || !ITEMS_PATH) {
-          setReadError('浮层拿不到文件通道')
+      /** 事项由宿主读：客户端只发 /qiyao items，拿回 JSON 再渲染 */
+      function fetchItems() {
+        const remote = PLUGIN_CTX && PLUGIN_CTX.remote
+        if (!remote || !remote.commands) {
+          setReadError('浮层拿不到命令通道')
           return Promise.resolve()
         }
         if (!sessionId) {
-          setReadError('浮层拿不到会话标识：' + (props ? Object.keys(props).join(',') : 'no props'))
+          setReadError('浮层拿不到会话标识')
           return Promise.resolve()
         }
-        return Promise.resolve(wf.read(sessionId, ITEMS_PATH, {}))
+        return Promise.resolve(remote.commands.execute(sessionId, '/qiyao items', []))
           .then((res) => {
             const data = unwrap(res)
+            const text = (data && (data.text || data.value)) || ''
+            const parsed = JSON.parse(String(text))
             setReadError('')
-            if (data) setItems(parseItems(data.text, info))
+            setItems({ today: parsed.today || [], todayTotal: parsed.todayTotal || 0 })
           })
           .catch((error) => {
             setReadError('读不到事项：' + (error && error.message ? error.message : String(error)))
@@ -89,7 +86,7 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         let alive = true
-        readItems().catch(() => {
+        fetchItems().catch(() => {
           if (alive) setItems(null)
         })
         return () => {
@@ -113,7 +110,7 @@ window.__ModuleLoader__.load({
             setMessage(out ? String(out).split('\n')[0] : '已加上')
             setDraft('')
             setAdding(false)
-            return readItems()
+            return fetchItems()
           })
           .catch((error) => {
             setMessage('没加上：' + (error && error.message ? error.message : String(error)))
@@ -431,7 +428,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'remote', 'remote.workspaceFiles', 'remote.commands'],
+      inject: ['slots', 'remote', 'remote.commands'],
       apply(ctx) {
         PLUGIN_CTX = ctx
         ctx.slots.inject('conversation.session.header.actions', () =>

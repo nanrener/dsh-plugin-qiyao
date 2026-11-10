@@ -69,6 +69,11 @@ const YEAR_ROLL_DAYS = 180
 
 const DAY_MS = 86400000
 
+/** 正数取模：1970 年以前的 dayNumber 是负数，直接 % 会得到负下标 */
+function mod(n, len) {
+  return ((n % len) + len) % len
+}
+
 export function pad2(n) {
   return String(n).padStart(2, '0')
 }
@@ -214,12 +219,12 @@ export function readItems(text, todayKey, y, m, d) {
 
 /** 当天首推：picks 长度与 7 互质，每天顺着走一条 */
 export function pickFor(planet, day) {
-  return planet.picks[day % planet.picks.length]
+  return planet.picks[mod(day, planet.picks.length)]
 }
 
 /** 当天适配：从 fit 池取连续 count 条，池长与 7 互质，不会每周同一条 */
 export function fitFor(planet, day, count = FIT_SHOWN) {
-  const start = day % planet.fit.length
+  const start = mod(day, planet.fit.length)
   const fit = []
   for (let i = 0; i < count; i += 1) fit.push(planet.fit[(start + i) % planet.fit.length])
   return fit

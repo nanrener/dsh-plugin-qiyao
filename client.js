@@ -78,6 +78,11 @@ const YEAR_ROLL_DAYS = 180
 
 const DAY_MS = 86400000
 
+/** 正数取模：1970 年以前的 dayNumber 是负数，直接 % 会得到负下标 */
+function mod(n, len) {
+  return ((n % len) + len) % len
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0')
 }
@@ -223,12 +228,12 @@ function readItems(text, todayKey, y, m, d) {
 
 /** 当天首推：picks 长度与 7 互质，每天顺着走一条 */
 function pickFor(planet, day) {
-  return planet.picks[day % planet.picks.length]
+  return planet.picks[mod(day, planet.picks.length)]
 }
 
 /** 当天适配：从 fit 池取连续 count 条，池长与 7 互质，不会每周同一条 */
 function fitFor(planet, day, count = FIT_SHOWN) {
-  const start = day % planet.fit.length
+  const start = mod(day, planet.fit.length)
   const fit = []
   for (let i = 0; i < count; i += 1) fit.push(planet.fit[(start + i) % planet.fit.length])
   return fit
@@ -238,7 +243,6 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
 })()
 
     const POPOVER_ID = 'qiyao-calendar-popover'
-    const ITEMS_PATH = "C:\\Users\\孙先生\\Documents\\七曜事项.txt"
     let PLUGIN_CTX = null
 
     const chipStyle = {
@@ -268,11 +272,6 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
       }
     }
 
-    /** 事项文件原文 → 今天要做的那几条（截断数和“还有几条”都交给共享实现） */
-    function parseItems(text, info) {
-      return QIYAO.readItems(text, QIYAO.weekdayKey(info.y, info.m, info.d), info.y, info.m, info.d)
-    }
-
     function QiyaoAction(props) {
       const panelRef = React.useRef(null)
       const info = todayInfo()
@@ -295,21 +294,24 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
         return res
       }
 
-      function readItems() {
-        const wf = PLUGIN_CTX && PLUGIN_CTX.remote && PLUGIN_CTX.remote.workspaceFiles
-        if (!wf || !ITEMS_PATH) {
-          setReadError('浮层拿不到文件通道')
+      /** 事项由宿主读：客户端只发 /qiyao items，拿回 JSON 再渲染 */
+      function fetchItems() {
+        const remote = PLUGIN_CTX && PLUGIN_CTX.remote
+        if (!remote || !remote.commands) {
+          setReadError('浮层拿不到命令通道')
           return Promise.resolve()
         }
         if (!sessionId) {
-          setReadError('浮层拿不到会话标识：' + (props ? Object.keys(props).join(',') : 'no props'))
+          setReadError('浮层拿不到会话标识')
           return Promise.resolve()
         }
-        return Promise.resolve(wf.read(sessionId, ITEMS_PATH, {}))
+        return Promise.resolve(remote.commands.execute(sessionId, '/qiyao items', []))
           .then((res) => {
             const data = unwrap(res)
+            const text = (data && (data.text || data.value)) || ''
+            const parsed = JSON.parse(String(text))
             setReadError('')
-            if (data) setItems(parseItems(data.text, info))
+            setItems({ today: parsed.today || [], todayTotal: parsed.todayTotal || 0 })
           })
           .catch((error) => {
             setReadError('读不到事项：' + (error && error.message ? error.message : String(error)))
@@ -318,7 +320,7 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
 
       React.useEffect(() => {
         let alive = true
-        readItems().catch(() => {
+        fetchItems().catch(() => {
           if (alive) setItems(null)
         })
         return () => {
@@ -342,7 +344,7 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
             setMessage(out ? String(out).split('\n')[0] : '已加上')
             setDraft('')
             setAdding(false)
-            return readItems()
+            return fetchItems()
           })
           .catch((error) => {
             setMessage('没加上：' + (error && error.message ? error.message : String(error)))
@@ -660,7 +662,7 @@ return { WEEK_ORDER, WEEKDAY_LABEL, WEEKDAY_ORDER, PREFIX_ALIASES, FIT_SHOWN, TO
     }
 
     return {
-      inject: ['slots', 'remote', 'remote.workspaceFiles', 'remote.commands'],
+      inject: ['slots', 'remote', 'remote.commands'],
       apply(ctx) {
         PLUGIN_CTX = ctx
         ctx.slots.inject('conversation.session.header.actions', () =>

@@ -119,5 +119,21 @@ ok('非法日期参数报错而不是崩', () => {
   assert.equal(res.kind, 'error')
 })
 
+ok('1970 年以前的日子不会打印 undefined', () => {
+  const res = handler({ rawInput: '1900-01-01' })
+  assert.equal(res.kind, 'success')
+  assert.ok(!res.text.includes('undefined'))
+  assert.ok(!/也适合：、/.test(res.text))
+})
+
+ok('items 只回 JSON，供浮层读取', () => {
+  fs.writeFileSync(tmp, ['每天的事', '2026-11-10|今天的活'].join('\n'), 'utf8')
+  const res = handler({ rawInput: 'items 2026-11-10' })
+  assert.equal(res.kind, 'success')
+  const data = JSON.parse(res.text)
+  assert.deepEqual(data.today, ['每天的事', '今天的活'])
+  assert.equal(data.todayTotal, 2)
+})
+
 fs.unlinkSync(tmp)
 console.log(`\n全部通过：${passed} 项`)

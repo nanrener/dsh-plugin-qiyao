@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0
+
+- 修：`client.js` 里写死了构建者的绝对路径（`C:\Users\<用户名>\Documents\…`），别人装上浮层读不到事项，同时泄露用户名
+- 改成宿主读文件、浮层只发 `/qiyao items` 拿 JSON；客户端不再依赖 `remote.workspaceFiles`，也不再需要知道任何路径
+- 新增 `/qiyao items [日期]`：机器接口，只回 JSON
+- 修：1970 年以前的日期会打印 `undefined`（负数取模得到负下标）
+- `npm run build` 增加检查：产物里出现本机绝对路径直接失败
+
 ## 1.8.1
 
 - 修：「＋ 加一件事」和 `/qiyao add` 不带日期时被当成「天天出现」，导致昨天加的事今天又冒出来

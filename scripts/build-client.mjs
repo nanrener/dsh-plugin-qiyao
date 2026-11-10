@@ -1,7 +1,6 @@
 // 生成 client.js：把 shared/items.mjs 与 data/qiyao.js 内联进浏览器端的 factory。
 // 改动 shared/ 或 data/ 之后，运行：npm run build
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { planets } from '../data/qiyao.js'
@@ -74,9 +73,13 @@ if (!body.includes('/*__SHARED__*/')) {
 const out = body
   .replace('/*__SHARED__*/', () => sharedBundle)
   .replace('/*__DATA__*/ null', () => JSON.stringify(payload))
-  .replace("/*__ITEMS_PATH__*/ ''", () =>
-    JSON.stringify(process.env.QIYAO_ITEMS || path.join(os.homedir(), 'Documents', '七曜事项.txt'))
-  )
+
+// 客户端产物里不允许出现本机绝对路径：否则换台机器装上去读不到，还会泄露用户名
+const LEAK = /[A-Za-z]:[\\/]{1,2}Users[\\/]|\/Users\/[^"']|\/home\/[^"']/
+const leaked = out.match(LEAK)
+if (leaked) {
+  throw new Error(`client.js 里出现了本机路径（${leaked[0]}），检查内联逻辑`)
+}
 
 fs.writeFileSync(path.join(root, 'client.js'), out, 'utf8')
 console.log('client.js 已生成，大小', Buffer.byteLength(out), 'bytes')

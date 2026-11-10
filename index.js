@@ -222,6 +222,21 @@ export function apply(ctx) {
             }
           }
 
+          // 给浮层用的机器接口：只回 JSON。文件由宿主读，路径不写进客户端。
+          const itemsCall = /^items(?:\s+([\s\S]+))?$/i.exec(raw)
+          if (itemsCall) {
+            const day = resolveDate(itemsCall[1] ?? '')
+            if (!day) return { kind: 'error', text: 'items 的日期不对' }
+            const { today, todayTotal } = readItems(
+              readItemsFile(),
+              weekdayKey(day.y, day.m, day.d),
+              day.y,
+              day.m,
+              day.d
+            )
+            return { kind: 'success', text: JSON.stringify({ ...day, today, todayTotal }) }
+          }
+
           const target = resolveDate(raw)
           if (!target) {
             return {
