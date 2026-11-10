@@ -120,9 +120,8 @@
 │  ├─ client-body.txt    # 按钮与浮层的源码
 │  ├─ build-client.mjs   # 把 shared 与 data 内联进 client.js
 │  ├─ check.mjs          # 数量、去重、构建一致性
-│  ├─ make-preview.py    # 重画 docs/preview.png（需 Pillow，发布前手工跑）
 │  └─ test-items.mjs     # 日期解析与追加事项的断言测试
-└─ docs/preview.png      # 预览图，用 scripts/make-preview.py 生成，不是截图
+└─ docs/preview.png      # 预览图（当前界面的样子）
 ```
 
 改文案或改解析逻辑：
@@ -133,11 +132,7 @@ npm run check     # 数量、跨曜重复、client.js 是否最新
 npm test          # 日期与事项解析的断言
 ```
 
-改了界面要重拍预览图（`docs/preview.png` 必须是当前界面的样子，市场检查会比对）：
-
-```
-python scripts/make-preview.py docs/preview.png
-```
+改了界面要重拍预览图——`docs/preview.png` 必须是当前界面的样子，市场检查会比对。
 
 三个一起跑：`npm run verify`。改完重装插件、重启客户端（客户端插件是启动时打包的）。
 
