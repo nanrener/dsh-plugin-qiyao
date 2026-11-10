@@ -1,6 +1,6 @@
 {
   "name": "qiyao-calendar",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "每天看一眼今天是什么日子：日、月、火、水、木、金、土，顺手给点安排灵感，不算吉凶。",
   "type": "module",
   "main": "index.js",

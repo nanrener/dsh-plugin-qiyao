@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.2
+
+- README 的安装说明改成实测口径：推荐下载 ZIP 后拖入；填仓库地址需要 git + GitHub SSH 密钥，普通机器走不通
+- 实测结论：`https://github.com/…` 会被当成 `git+ssh` 依赖交给 pnpm，无 git 时报 `'git' 不是内部或外部命令`
+
 ## 1.9.1
 
 - 重画 `docs/preview.png`：改成按当前界面绘制的图，不再是旧版截图
