@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.1
+
+- 重画 `docs/preview.png`：改成按当前界面绘制的图，不再是旧版截图
+- 新增 `scripts/make-preview.py`，改界面后一条命令重出图
+- 补充 README 里重出预览图的说明
+
 ## 1.9.0
 
 - 修：`client.js` 里写死了构建者的绝对路径（`C:\Users\<用户名>\Documents\…`），别人装上浮层读不到事项，同时泄露用户名
